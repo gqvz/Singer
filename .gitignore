@@ -1,1 +1,3 @@
-﻿/config.cs
+﻿# this file should be at the root level btw
+# uncomment the line below
+# Config.json

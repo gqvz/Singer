@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using DSharpPlus.CommandsNext;
 using DSharpPlus.SlashCommands;
+using Singer.Constructs;
 
 namespace Singer
 {
@@ -9,24 +10,24 @@ namespace Singer
     {
         public static void StartLavalink()
         {
-            System.Diagnostics.Process process = new System.Diagnostics.Process();
-            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
+            var process = new System.Diagnostics.Process(); // use `var` instead of implicit types, looks clearer, works the same, doesnt take up half the screen
+            var startInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     RedirectStandardOutput = true,
                     WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
                     FileName = "cmd.exe",
-                    Arguments = "/C \"C:\\Program Files (x86)\\Minecraft Launcher\\runtime\\java-runtime-alpha\\windows-x64\\java-runtime-alpha\\bin\\java.exe\" -jar Lavalink.jar"
+                    Arguments = "/C \"C:\\Program Files (x86)\\Minecraft Launcher\\runtime\\java-runtime-alpha\\windows-x64\\java-runtime-alpha\\bin\\java.exe\" -jar Lavalink.jar" // thats the weird place for java to be
                 };
             process.StartInfo = startInfo;
             process.Start();
         }
         
-        public static bool IsBoundChannel(CommandContext ctx, Player player)
+        public static bool IsBoundChannel(this CommandContext ctx, Player player)
         {
             return ctx.Channel == player.TextChannel;
         }
         
-        public static bool IsBoundChannel(InteractionContext ctx, Player player)
+        public static bool IsBoundChannel(this InteractionContext ctx, Player player)
         {
             return ctx.Channel == player.TextChannel;
         }
@@ -35,13 +36,11 @@ namespace Singer
         public static void Shuffle(this List<Song> array)
         {
             var rng = new Random();
-            int n = array.Count;
+            var n = array.Count;
             while (n > 1)
             {
-                int k = rng.Next(n--);
-                Song temp = array[n];
-                array[n] = array[k];
-                array[k] = temp;
+                var k = rng.Next(n--);
+                (array[n], array[k]) = (array[k], array[n]); // listen to rider, it is cool
             }
         }
     }

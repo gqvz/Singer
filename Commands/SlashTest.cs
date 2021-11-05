@@ -10,19 +10,23 @@ using DSharpPlus.SlashCommands;
 using DSharpPlus.Interactivity.Enums;
 using DSharpPlus.Interactivity.EventHandling;
 using DSharpPlus.Interactivity.Extensions;
+using Microsoft.Extensions.Logging;
+using Singer.Constructs;
 
 namespace Singer.Commands
 {
     public class SlashTest : ApplicationCommandModule
     {
+        private readonly Random _rand = new();
+
         [SlashCommand("ping", "Returns the latency between the bot and Discord.")]
-        public static async Task Ping(InteractionContext ctx)
+        public async Task Ping(InteractionContext ctx)
         {
-            var embed = new DiscordEmbedBuilder()
+            var embed = new DiscordEmbedBuilder
             {
                 Title = "Pong! 🏓",
                 Description = $"Latency: {ctx.Client.Ping}ms",
-                Footer = new DiscordEmbedBuilder.EmbedFooter()
+                Footer = new DiscordEmbedBuilder.EmbedFooter
                 {
                     IconUrl = ctx.Member.AvatarUrl,
                     Text = $"Requested by {ctx.Member.Username}"
@@ -110,15 +114,15 @@ namespace Singer.Commands
 
                 var track = results.Tracks.First();
 
-                Song song = Song.ToSong(track, ctx);
-                var embed = new DiscordEmbedBuilder()
+                var song = track.ToSong(ctx);
+                var embed = new DiscordEmbedBuilder
                 {
                     Description = $"[{song.Title} ({song.Length})]({song.Url})",
-                    Thumbnail = new DiscordEmbedBuilder.EmbedThumbnail()
+                    Thumbnail = new DiscordEmbedBuilder.EmbedThumbnail
                     {
-                        Url = GeneralCommands.Gifs[GeneralCommands.Rand.Next(GeneralCommands.Gifs.Length)]
+                        Url = GeneralCommands.Gifs[_rand.Next(GeneralCommands.Gifs.Length)]
                     },
-                    Footer = new DiscordEmbedBuilder.EmbedFooter()
+                    Footer = new DiscordEmbedBuilder.EmbedFooter
                     {
                         IconUrl = ctx.Member.AvatarUrl,
                         Text = $"Requested by {ctx.Member.DisplayName}"
@@ -140,7 +144,7 @@ namespace Singer.Commands
                 }
                 else
                 {
-                    if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+                    if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                     {
                         return;
                     }
@@ -153,7 +157,7 @@ namespace Singer.Commands
             }
             catch (Exception e)
             {
-                Logging.Log_Critical(e.ToString());
+                ctx.Client.Logger.LogCritical(e.ToString());
             }
         }
 
@@ -165,7 +169,7 @@ namespace Singer.Commands
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                     new DiscordInteractionResponseBuilder()
                         .WithContent("An error has occurred, please try again later.").AsEphemeral(true));
-                Logging.Log_Critical("Lavalink connection is not established!");
+                ctx.Client.Logger.LogCritical("Lavalink connection is not established!");
                 return;
             }
 
@@ -194,66 +198,66 @@ namespace Singer.Commands
                     $"Joined `{channel.Name}` and bound to {ctx.Channel.Mention}!"));
         }
 
-        public async Task on_track_end(LavalinkGuildConnection self, TrackFinishEventArgs e)
+        public async Task on_track_end(LavalinkGuildConnection lavalinkGuildConnection, TrackFinishEventArgs e)
         {
-            if (GeneralCommands.Players[self.Guild.Id].Skipping)
+            if (GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Skipping)
                 return;
-            Song song = new Song();
+            var song = new Song();
             try
             {
-                song = Song.GetSongByTrack(e.Track, GeneralCommands.Players[self.Guild.Id]);
-                GeneralCommands.Players[self.Guild.Id].CurrentSong = null;
-                if (!GeneralCommands.Players[self.Guild.Id].Skipping)
-                    await GeneralCommands.Players[self.Guild.Id].TextChannel
+                song = e.Track.GetSongByTrack(GeneralCommands.Players[lavalinkGuildConnection.Guild.Id]);
+                GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong = null;
+                if (!GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Skipping)
+                    await GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].TextChannel
                         .SendMessageAsync(builder => builder.WithContent($"Song `{song.Title}` has ended"));
-                GeneralCommands.Players[self.Guild.Id].Skipping = false;
+                GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Skipping = false;
             }
             catch (NullReferenceException)
             {
-                Logging.Log_Warn("Track End event errored.");
+                lavalinkGuildConnection.Node.Discord.Logger.LogCritical("Track End event errored.");
             }
 
-            if (GeneralCommands.Players[self.Guild.Id].Queue.Count > 1)
+            if (GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue.Count > 1)
             {
                 try
                 {
-                    var track = GeneralCommands.Players[self.Guild.Id]
-                        .Queue[GeneralCommands.Players[self.Guild.Id].Queue.IndexOf(song) + 1];
-                    await self.PlayAsync(track.Track);
-                    GeneralCommands.Players[self.Guild.Id].CurrentSong = track;
-                    GeneralCommands.Players[self.Guild.Id].Queue.Remove(song);
-                    if (GeneralCommands.Players[self.Guild.Id].Looping)
-                        GeneralCommands.Players[self.Guild.Id].Queue.Add(song);
-                    await GeneralCommands.Players[self.Guild.Id].TextChannel.SendMessageAsync(builder =>
+                    var track = GeneralCommands.Players[lavalinkGuildConnection.Guild.Id]
+                        .Queue[GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue.IndexOf(song) + 1];
+                    await lavalinkGuildConnection.PlayAsync(track.Track);
+                    GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong = track;
+                    GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue.Remove(song);
+                    if (GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Looping)
+                        GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue.Add(song);
+                    await GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].TextChannel.SendMessageAsync(builder =>
                         builder.WithContent($"Now playing: `{track.Title}` added by {track.Requester.Mention}"));
                     return;
                 }
                 catch
                 {
-                    await self.PlayAsync(GeneralCommands.Players[self.Guild.Id].Queue[0]
+                    await lavalinkGuildConnection.PlayAsync(GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue[0]
                         .Track);
-                    GeneralCommands.Players[self.Guild.Id].CurrentSong =
-                        GeneralCommands.Players[self.Guild.Id].Queue[0];
-                    await GeneralCommands.Players[self.Guild.Id].TextChannel.SendMessageAsync(builder =>
+                    GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong =
+                        GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue[0];
+                    await GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].TextChannel.SendMessageAsync(builder =>
                         builder.WithContent(
-                            $"Now playing: `{GeneralCommands.Players[self.Guild.Id].Queue[0].Title}` added by {GeneralCommands.Players[self.Guild.Id].Queue[0].Requester.Mention}"));
+                            $"Now playing: `{GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue[0].Title}` added by {GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue[0].Requester.Mention}"));
                     return;
                 }
             }
             else
             {
-                if (GeneralCommands.Players[self.Guild.Id].CurrentSong != null && GeneralCommands.Players[self.Guild.Id].Looping)
+                if (GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong != null && GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Looping)
                 {
-                    await self.PlayAsync(GeneralCommands.Players[self.Guild.Id].CurrentSong.Track);
-                    await GeneralCommands.Players[self.Guild.Id].TextChannel.SendMessageAsync(builder =>
+                    await lavalinkGuildConnection.PlayAsync(GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong.Track);
+                    await GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].TextChannel.SendMessageAsync(builder =>
                         builder.WithContent(
-                            $"Now playing: `{GeneralCommands.Players[self.Guild.Id].CurrentSong.Title}` added by {GeneralCommands.Players[self.Guild.Id].CurrentSong.Requester.Mention}"));
+                            $"Now playing: `{GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong.Title}` added by {GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong.Requester.Mention}"));
                     return;
                 }
             }
 
-            GeneralCommands.Players[self.Guild.Id].Queue.Remove(song);
-            GeneralCommands.Players[self.Guild.Id].CurrentSong = null;
+            GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].Queue.Remove(song);
+            GeneralCommands.Players[lavalinkGuildConnection.Guild.Id].CurrentSong = null;
         }
 
         [SlashCommand("stop", "Clears the queue and disconnects from the voice channel.")]
@@ -265,7 +269,7 @@ namespace Singer.Commands
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                     new DiscordInteractionResponseBuilder()
                         .WithContent("An error has occurred, please try again later.").AsEphemeral(true));
-                Logging.Log_Critical("Lavalink connection is not established!");
+                ctx.Client.Logger.LogCritical("Lavalink connection is not established!");
                 return;
             }
 
@@ -302,7 +306,7 @@ namespace Singer.Commands
                 }
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
             GeneralCommands.Players.Remove(ctx.Guild.Id);
@@ -346,7 +350,7 @@ namespace Singer.Commands
                 return;
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
             if (conn.CurrentState.CurrentTrack == null && GeneralCommands.Players[ctx.Guild.Id].CurrentSong == null)
@@ -403,7 +407,7 @@ namespace Singer.Commands
                 return;
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
 
@@ -460,15 +464,15 @@ namespace Singer.Commands
                 return;
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
-            var embed = new DiscordEmbedBuilder()
+            var embed = new DiscordEmbedBuilder
             {
                 Title = "Now Playing",
                 Description =
                     $"[{GeneralCommands.Players[ctx.Guild.Id].CurrentSong.Title} ({conn.CurrentState.PlaybackPosition.Hours.ToString("00")}:{conn.CurrentState.PlaybackPosition.Minutes.ToString("00")}:{conn.CurrentState.PlaybackPosition.Seconds.ToString("00")}/{GeneralCommands.Players[ctx.Guild.Id].CurrentSong.Length})]({GeneralCommands.Players[ctx.Guild.Id].CurrentSong.Url})",
-                Thumbnail = new DiscordEmbedBuilder.EmbedThumbnail()
+                Thumbnail = new DiscordEmbedBuilder.EmbedThumbnail
                 {
                     Url = GeneralCommands.Players[ctx.Guild.Id].CurrentSong.ThumbnailUrl
                 }
@@ -512,7 +516,7 @@ namespace Singer.Commands
                     return;
                 }
 
-                if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+                if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                     return;
 
                 if (conn.CurrentState.CurrentTrack == null && GeneralCommands.Players[ctx.Guild.Id].CurrentSong == null)
@@ -525,7 +529,7 @@ namespace Singer.Commands
                 Song song;
                 try
                 {
-                    song = Song.GetSongByTrack(conn.CurrentState.CurrentTrack, GeneralCommands.Players[ctx.Guild.Id]);
+                    song = conn.CurrentState.CurrentTrack.GetSongByTrack(GeneralCommands.Players[ctx.Guild.Id]);
                 }
                 catch (NullReferenceException)
                 {
@@ -574,7 +578,7 @@ namespace Singer.Commands
             }
             catch (Exception e)
             {
-                Logging.Log_Critical(e.ToString());
+                ctx.Client.Logger.LogCritical(e.ToString());
             }
         }
 
@@ -611,7 +615,7 @@ namespace Singer.Commands
                 return;
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
             GeneralCommands.Players[ctx.Guild.Id].Queue = new();
@@ -654,19 +658,19 @@ namespace Singer.Commands
                 }
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
-            var embed = new DiscordEmbedBuilder()
+            var embed = new DiscordEmbedBuilder
             {
                 Title = "Queue",
-                Thumbnail = new DiscordEmbedBuilder.EmbedThumbnail()
+                Thumbnail = new DiscordEmbedBuilder.EmbedThumbnail
                 {
-                    Url = GeneralCommands.Gifs[GeneralCommands.Rand.Next(GeneralCommands.Gifs.Length)]
+                    Url = GeneralCommands.Gifs[_rand.Next(GeneralCommands.Gifs.Length)]
                 }
             };
 
-            string desc = "";
+            var desc = "";
             if (GeneralCommands.Players[ctx.Guild.Id].Queue.Count <= 1)
             {
                 embed.WithDescription("There are no songs in the queue. Use $play to add songs!");
@@ -739,7 +743,7 @@ namespace Singer.Commands
             }
 
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
             if (GeneralCommands.Players[ctx.Guild.Id].Queue.Count <= 1)
@@ -753,11 +757,11 @@ namespace Singer.Commands
             {
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                     new DiscordInteractionResponseBuilder().WithContent(
-                        $"There's no song with that index, please use `{Config.Prefixes.ToList()[0]}queue`!"));
+                        $"There's no song with that index, please use `{Singer.Config.Prefixes.ToList()[0]}queue`!"));
                 return;
             }
 
-            Song song = GeneralCommands.Players[ctx.Guild.Id].Queue[index];
+            var song = GeneralCommands.Players[ctx.Guild.Id].Queue[index];
             GeneralCommands.Players[ctx.Guild.Id].Queue.Remove(song);
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().WithContent($"Removed song `{song.Title}`"));
@@ -796,7 +800,7 @@ namespace Singer.Commands
                 }
             }
 
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
 
             if (GeneralCommands.Players[ctx.Guild.Id].Looping)
@@ -846,7 +850,7 @@ namespace Singer.Commands
                 }
             }
             
-            if (!Helpers.IsBoundChannel(ctx, GeneralCommands.Players[ctx.Guild.Id]))
+            if (!ctx.IsBoundChannel(GeneralCommands.Players[ctx.Guild.Id]))
                 return;
             
             // Shuffle queue
